@@ -7,6 +7,9 @@ hz = 1800
 old = time()
 a = []
 
+with open("voltage.csv", "w") as f:
+    f.write("")
+
 while(True):
     i = 0
     while(i < 60):
