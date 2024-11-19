@@ -8,17 +8,27 @@ def readData():
 
 ADC.setup()
 pin = "P9_37"
-hz = 1350
+hz = 1800
 a = []
 t = 2
 
 print("Comecando!")
 
+old = time()
+j = 0
+
 while(True):
-    readData()
-    sleep(1/hz)
-    if len(a) >= (hz/60)*2:
+    i = 0
+    while i < 60:
+        now = time()
+        if now - old >= 1/hz:
+            old = now
+            now = time()
+            readData()
+            i+=1
+    if j == 2:
         break
+    j+=1
 
 print(len(a))
 

@@ -15,5 +15,5 @@ def plotAll(source, path):
     plt.savefig(path)
     plt.clf
 
-plotXLines("voltage.csv", "img1.png", 45)
+plotXLines("voltage.csv", "img1.png", 90)
 plotAll("voltage.csv", "img2.png")
