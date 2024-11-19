@@ -9,7 +9,7 @@ def readData(signum, frame):
 
 ADC.setup()
 pin = "P9_37"
-hz = 1800
+hz = 2700
 a = []
 t = 2
 
