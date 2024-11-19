@@ -8,7 +8,7 @@ def readData():
 
 ADC.setup()
 pin = "P9_37"
-hz = 2700
+hz = 1350
 a = []
 t = 2
 
