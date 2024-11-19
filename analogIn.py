@@ -20,12 +20,13 @@ j = 0
 while(True):
     i = 0
     while i < 60:
+        readData()
+        i+=1
         now = time()
-        if now - old >= 1/hz:
-            old = now
+        while now - old < 1/hz:
             now = time()
-            readData()
-            i+=1
+            pass
+        old = now
     if j == 2:
         break
     j+=1
