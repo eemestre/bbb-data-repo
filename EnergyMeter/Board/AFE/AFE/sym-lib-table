@@ -1,0 +1,11 @@
+(sym_lib_table
+  (lib (name AFE_CMETER)(type Legacy)(uri ${KIPRJMOD}/AFE_CMETER.lib)(options "")(descr ""))
+  (lib (name TPS60403DBVT)(type Legacy)(uri ${MYLIB}/TPS60403DBVT.lib)(options "")(descr ""))
+  (lib (name EMF325B7105KNHT)(type Legacy)(uri ${MYLIB}/EMF325B7105KNHT.lib)(options "")(descr ""))
+  (lib (name AFE-rescue)(type Legacy)(uri ${KIPRJMOD}/AFE-rescue.lib)(options "")(descr ""))
+  (lib (name C1206C106J3RACAUTO7210)(type Legacy)(uri ${MYLIB}/C1206C106J3RACAUTO7210.lib)(options "")(descr ""))
+  (lib (name BLM31KN471SN1L)(type Legacy)(uri ${MYLIB}/BLM31KN471SN1L.lib)(options "")(descr ""))
+  (lib (name TPS73230DBVT)(type Legacy)(uri ${MYLIB}/TPS73230DBVT.lib)(options "")(descr ""))
+  (lib (name TPS72301DBVT)(type Legacy)(uri ${MYLIB}/TPS72301DBVT.lib)(options "")(descr ""))
+  (lib (name TPS73201DBVT)(type Legacy)(uri ${MYLIB}/TPS73201DBVT.lib)(options "")(descr ""))
+)

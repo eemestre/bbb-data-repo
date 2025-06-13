@@ -1,0 +1,81 @@
+Desenvolvimento do software
+
+1 - Instalação do compilador:
+extrair o arquivo gcc-linaro-4.9-2016.02-x86_64_arm-linux-gnueabihf.tar.xz no diretório local ./compiler
+
+2 - Para compilar o projeto: bash build.sh
+
+--------------------------------------------------------------------
+
+Comunicação da BBB
+
+Habilitar DHCP na interface eth0. Se estiver usando um roteador o endereço da BBB pode ser reservado (estático).
+
+
+nano /etc/network/interfaces
+
+Adicionar:
+auto eth0
+iface eth0 inet dhcp
+
+
+Notas: Se a BBB já está configurada para pbter um endereco via DHCP (ou se possui um ip fixo)
+
+ssh debian@192.168.15.102
+senha: temppwd
+
+--------------------------------------------------------------------
+
+Diretórios
+
+debian@beaglebone:~$ cd CMETER/
+debian@beaglebone:~/CMETER$ ls
+ADS-CAPE-00A0.dtbo  AppNFS      build_dto  nfs_mount.sh
+ADS-CAPE-00A0.dts   ads_driver  config     nfs_mount3.sh
+
+
+config: script para configurar a BBB (PRU)
+build_dto: device tree overlay para configuração dos pinos usados no ADC
+
+
+-----------------------------------------------------------------------
+AppNFS: ponto de monagem do sistema de arquivos em rede.
+
+nfs_mount.sh 
+sudo busybox mount -o tcp -t nfs -o nolock <IP PC>:<Diretório do PC> /home/debian/CMETER/AppNFS/
+
+exemplo
+
+sudo busybox mount -o tcp -t nfs -o nolock 192.168.1.104:/home/fernando/Documents/EnergyMeter/NFS /home/debian/CMETER/AppNFS/
+
+-----------------------------------------------------------------------
+
+Utilização:
+
+1 - Configurar HW para operação: sudo bash config
+
+debian@beaglebone:~/CMETER$ sudo bash config 
+[ ok ] Stopping cron (via systemctl): cron.service.
+[ ok ] Stopping lightdm (via systemctl): lightdm.service.
+[ ok ] Stopping xrdp (via systemctl): xrdp.service.
+[ ok ] Stopping avahi-daemon (via systemctl): avahi-daemon.service.
+
+2 - Montar sistema NFS:
+
+debian@beaglebone:~/CMETER$ sudo busybox mount -o tcp -t nfs -o nolock 192.168.15.82:/home/fernando/Documents/EnergyMeter/NFS /home/debian/CMETER/AppNFS/
+
+debian@beaglebone:~/CMETER$ ls AppNFS/
+CognitiveEnergyMeter  ads_driver  pru  raw.bin
+
+esse diretório contém:
+
+CognitiveEnergyMeter: executável
+ads_driver: fonte com os procedimentos para inicialização do ADS e funções para transferência de dados
+pru: rotas das PRUs que controlam a aquisição de dados usando os procedimentos do ads_driver e transferem para camada de aplicação (CognitiveEnergyMeter)
+
+
+3 - Executar aplicação:
+
+Para executar a aplicação:
+
+sudo ./CognitiveEnergyMeter

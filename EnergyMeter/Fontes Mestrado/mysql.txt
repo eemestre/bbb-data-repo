@@ -1,0 +1,424 @@
+delimiter //
+
+Create Procedure spProcessEvents(in Appclass int, out duration int, out p_start float, out p_end float)
+Begin
+	declare dt_start datetime;
+	declare dt_end datetime;
+    
+	select event_time,power from events where type = 1 and app_class = Appclass into dt_start,p_start;
+	select event_time,power from events where type = 2 and app_class = Appclass into dt_end,p_end;
+	
+	select timestampdiff(SECOND, dt_start, dt_end) into duration;
+	
+	delete from events where event_time = dt_start;
+	delete from events where event_time = dt_end;
+	
+End //
+
+delimiter ;
+
+
+
+Create Table History (Appliance int, Duration int, PowerAvg float, EventTime datetime);
+
+Create Table Appliances (Appliance int, PowerAvg float);
+
+
+select sum((PowerAvg*(Duration/3600)))/1000 from History where DAY(EventTime) = 27 and HOUR(EventTime) >= 2 and HOUR(EventTime) < 6;
+select (sum(ekwm)/60) from energy where DAY(dt) = 27 and HOUR(dt) >= 2 and HOUR(dt) < 6;
+
+
+
+delimiter //
+
+Create Procedure spProcessEvents(in Appclass int, out duration float, out p_start float, out p_end float)
+Begin
+	declare dt_start int;
+	declare dt_end int;
+    
+	select dt,power from events where type = 1 and app_class = Appclass into dt_start,p_start;
+	select dt,power from events where type = 2 and app_class = Appclass into dt_end,p_end;
+	
+	set duration = (dt_end - dt_start)/4;
+	
+	delete from events where type = 1 and app_class = Appclass;
+	delete from events where type = 2 and app_class = Appclass;
+	
+End //
+
+delimiter ;
+
+
+insert into events(type, app_class, dt) values(1, 0, 12);
+insert into events(type, app_class, dt) values(2, 0, 54);
+
+
+
+
+
+Create Table AppOn (Class int);
+
+Create Table PUnit (Power float, Dt int);
+Create Table PBlock (PBlockID int AUTO_INCREMENT, PowerAvg float, DtStart int, DtEnd int, Duration float, Dt datetime, PRIMARY KEY(PBlockID));
+Create Table PTracker (Appliance int, Count int, Block int, FOREIGN KEY(Block) REFERENCES PBlock(PBlockID));
+
+
+
+delimiter //
+
+Create Procedure spCreateBlock()
+Begin
+
+	declare avg float;
+	declare dtstart int;
+	declare dtend int;
+	declare duration float;
+	declare bdt datetime;
+	declare myblock int;
+	declare count_on int;
+	
+	select Dt from PUnit order by Dt ASC limit 1 into dtstart;
+	select Dt from PUnit order by Dt DESC limit 1 into dtend;
+	select AVG(Power) from PUnit where Dt <= (dtend-12) into avg;
+	
+	set duration = ((dtend - dtstart)/4)-3;
+	set bdt = NOW();
+	
+	insert into PBlock (PowerAvg, DtStart, DtEnd, Duration, Dt) values (avg, dtstart, dtend, duration, bdt);
+	
+	select PBlockID from PBlock where Dt = bdt into myblock;
+	
+	select COUNT(*) from AppOn into count_on;
+	
+	insert into PTracker(Appliance, Count, Block) select Class, count_on, myblock from AppOn;
+	
+	delete from PUnit;
+End //
+
+delimiter ;
+
+
+insert into AppOn(Class) values(0);
+
+delimiter //
+
+insert into PUnit(Power, Dt) values (5, 0);
+insert into PUnit(Power, Dt) values (6, 1);
+insert into PUnit(Power, Dt) values (6, 2);
+insert into PUnit(Power, Dt) values (5, 3);
+insert into PUnit(Power, Dt) values (5, 4);
+insert into PUnit(Power, Dt) values (6, 5);
+insert into PUnit(Power, Dt) values (15, 6);
+insert into PUnit(Power, Dt) values (25, 7);
+insert into PUnit(Power, Dt) values (45, 8);
+insert into PUnit(Power, Dt) values (50, 9);
+insert into PUnit(Power, Dt) values (51, 10);
+insert into PUnit(Power, Dt) values (52, 11);
+insert into PUnit(Power, Dt) values (48, 12);
+insert into PUnit(Power, Dt) values (49, 13);
+insert into PUnit(Power, Dt) values (15, 14);
+insert into PUnit(Power, Dt) values (5, 15);
+insert into PUnit(Power, Dt) values (6, 16);
+insert into PUnit(Power, Dt) values (5, 17);
+//
+
+delimiter ;
+
+
+
+drop procedure spCreateBlock;
+delete from PTracker;
+delete from PBlock;
+
+
+
+
+delimiter //
+Create Procedure spEvaluateEnergy(in AppClass int)
+Begin
+	declare ublocks int;
+	declare dblocks int;
+	declare avg_power float default 0;
+	declare avg_ublock float default 0;
+	declare avg_dblock float default 0;
+	declare avg_app float default 0;
+	declare utime float default 0;
+	declare dtime float default 0;
+	
+	
+	select COUNT(*) from PTracker where Count = 1 and Appliance = AppClass into ublocks;
+	
+	if ublocks > 0 then
+	
+	select sum((PowerAvg*(Duration/3600)))/1000, sum(Duration), AVG(PowerAvg) into avg_ublock,utime,avg_power from PBlock where exists (select * from PTracker where Count = 1 and Appliance = AppClass and PBlock.PBlockID = Block);
+	
+	if utime > 240 then
+
+	update Appliances set PowerAvg = ((PowerAvg+avg_power)/2) where Appliance = AppClass;
+
+	end if;
+	
+	end if;
+	
+	
+	select COUNT(*) from PTracker where Count > 1 and Appliance = AppClass into dblocks;
+	
+	if dblocks > 0 then
+	
+	select PowerAvg into avg_app from Appliances where Appliance = AppClass;
+	
+	select sum(Duration) into dtime from PBlock where exists (select * from PTracker where Count > 1 and Appliance = AppClass and PBlock.PBlockID = Block);
+	
+	set avg_dblock = (avg_app*(dtime/3600))/1000;
+	
+	end if;
+	
+	insert into History(Appliance,Ekwh,EventTime,Duration) values(AppClass, avg_dblock + avg_ublock, NOW(), dtime+utime);
+	
+	delete from PTracker where Appliance = AppClass;
+	
+	delete from PBlock where not exists (select * from PTracker where PBlock.PBlockID = Block);
+	
+End
+//
+delimiter ;
+
+
+
+
+
+Create Table MasterClass (Appliance int, Subclass int);
+
+insert into MasterClass(Appliance, Subclass) values(0, 0);
+insert into MasterClass(Appliance, Subclass) values(0, 19);
+insert into MasterClass(Appliance, Subclass) values(1, 1);
+insert into MasterClass(Appliance, Subclass) values(2, 2);
+insert into MasterClass(Appliance, Subclass) values(3, 3);
+insert into MasterClass(Appliance, Subclass) values(4, 4);
+insert into MasterClass(Appliance, Subclass) values(5, 5);
+insert into MasterClass(Appliance, Subclass) values(6, 6);
+insert into MasterClass(Appliance, Subclass) values(7, 7);
+insert into MasterClass(Appliance, Subclass) values(8, 8);
+insert into MasterClass(Appliance, Subclass) values(9, 9);
+insert into MasterClass(Appliance, Subclass) values(10, 10);
+insert into MasterClass(Appliance, Subclass) values(11, 11);
+insert into MasterClass(Appliance, Subclass) values(12, 12);
+insert into MasterClass(Appliance, Subclass) values(13, 13);
+insert into MasterClass(Appliance, Subclass) values(14, 14);
+insert into MasterClass(Appliance, Subclass) values(15, 15);
+insert into MasterClass(Appliance, Subclass) values(16, 16);
+insert into MasterClass(Appliance, Subclass) values(17, 17);
+insert into MasterClass(Appliance, Subclass) values(18, 20);
+
+
+
+Create Table MasterClassName (Appliance int, ClassName varchar(30));
+
+insert into MasterClassName(Appliance, ClassName) values(0, 'Geladeira');
+insert into MasterClassName(Appliance, ClassName) values(1, 'Micro-ondas');
+insert into MasterClassName(Appliance, ClassName) values(2, 'Purificador de agua');
+insert into MasterClassName(Appliance, ClassName) values(3, 'Notebook');
+insert into MasterClassName(Appliance, ClassName) values(4, 'Aparelho de som');
+insert into MasterClassName(Appliance, ClassName) values(5, 'Televisao LED');
+insert into MasterClassName(Appliance, ClassName) values(6, 'Liquidificador');
+insert into MasterClassName(Appliance, ClassName) values(7, 'Televisao LCD');
+insert into MasterClassName(Appliance, ClassName) values(8, 'Maquina de lavar roupas');
+insert into MasterClassName(Appliance, ClassName) values(9, 'Secador de cabelos');
+insert into MasterClassName(Appliance, ClassName) values(10, 'Lampada fluorescente');
+insert into MasterClassName(Appliance, ClassName) values(11, 'Computador Desktop');
+insert into MasterClassName(Appliance, ClassName) values(12, 'Forno Eletrico');
+insert into MasterClassName(Appliance, ClassName) values(13, 'Monitor LCD-LED-Tubo');
+insert into MasterClassName(Appliance, ClassName) values(14, 'Lampada LED');
+insert into MasterClassName(Appliance, ClassName) values(15, 'Ferro de passar roupa');
+insert into MasterClassName(Appliance, ClassName) values(16, 'Lampada incandescente');
+insert into MasterClassName(Appliance, ClassName) values(17, 'Fritadeira Eletrica');
+insert into MasterClassName(Appliance, ClassName) values(18, 'Ar condicionado');
+
+
+
+delimiter //
+Create Procedure spEvaluateDisaggregationError(in dis_month int, in dis_year int)
+Begin
+
+	select ((a.e_dis)/(b.e_tot))*100 as estimation, a.dt_day as day from (select DAY(EventTime) as dt_day,sum(Ekwh) as e_dis from History where MONTH(EventTime) = dis_month group by DAY(EventTime)) a, (select DAY(dt) as dt_day, sum(ekwh) as e_tot from energy where (MONTH(dt) = dis_month) and (YEAR(dt) = dis_year) and (pavg >= 10) group by DAY(dt)) b where a.dt_day = b.dt_day;
+End
+//
+delimiter ;
+
+
+
+delimiter //
+Create Procedure spApplianceLog(in app_month int, in app_day int, in app_year int)
+Begin
+select sum(History.Ekwh) as ekwh,sum(History.Duration)/60 as minutes,sum(History.Duration)/3600 as hours,MasterClassName.ClassName as class,DAY(History.EventTime) as day from History,MasterClass,MasterClassName   where (YEAR(History.EventTime) = app_year) and (MONTH(History.EventTime) = app_month) and (DAY(History.EventTime) = app_day) and (History.Appliance = MasterClass.SubClass) and (MasterClass.Appliance = MasterClassName.Appliance) group by MasterClass.Appliance,DAY(History.EventTime) order by History.EventTime;	
+End
+//
+delimiter ;
+
+
+delimiter //
+Create Procedure spApplianceLog2(in app_month int, in app_year int, in app_day int, in app int)
+Begin
+	declare mydate1 datetime;
+	declare mydate2 datetime;
+
+	select MAKEDATE(app_year, 1) into mydate2;
+	select date_add(mydate2, interval (app_month-1) MONTH) into mydate2;
+	select date_add(mydate2, interval (app_day-1) DAY) into mydate2;
+
+	select date_add(mydate2, interval -1 MONTH) into mydate1;
+	
+	select sum(History.Ekwh) as ekwh, sum(History.Duration)/60 as minutes, sum(History.Duration)/3600 as hours, MasterClassName.ClassName as class, DATE_FORMAT(History.EventTime, "%d/%m") as day from History,MasterClass,MasterClassName where (History.EventTime >= mydate1) and (History.EventTime <= mydate2) and (History.Appliance = MasterClass.SubClass) and (MasterClass.Appliance = MasterClassName.Appliance) and (MasterClass.Appliance = 0) group by MasterClass.Appliance, DAY(History.EventTime), MONTH(EventTime) order by History.EventTime;
+End
+//
+delimiter ;
+
+
+delimiter //
+Create Procedure spApplianceLog3(in app_month int, in app_year int, in app int)
+Begin
+select ((800*(History.Duration - 2)/3600)/(History.Ekwh*1000)) as eff from History where (YEAR(History.EventTime) = app_year) and (MONTH(History.EventTime) = app_month) and (History.Appliance = app) and Duration >= 180 order by History.EventTime;
+End
+//
+delimiter ;
+
+
+delimiter //
+Create Procedure spApplianceLog4(in app_month int, in app_year int, in app_day int)
+Begin
+	declare mydate1 datetime;
+	declare mydate2 datetime;
+
+	select MAKEDATE(app_year, 1) into mydate2;
+	select date_add(mydate2, interval (app_month-1) MONTH) into mydate2;
+	select date_add(mydate2, interval (app_day-1) DAY) into mydate2;
+
+	select date_add(mydate2, interval -1 MONTH) into mydate1;
+
+	select a.Events,a.EventDay from (select COUNT(*) as Events,DATE(EventTime) as EventDay from History where (Appliance = 0) and (EventTime >= mydate1) and (EventTime <= mydate2) group by MONTH(EventTIme), DAY(EventTime)) a where (a.Events <= 26) and (a.Events > 10);
+End
+//
+delimiter ;
+
+
+delimiter //
+Create Procedure spApplianceLog5(in app_month int, in app_year int, in app_day int)
+Begin
+	declare mydate1 datetime;
+	declare mydate2 datetime;
+
+	select MAKEDATE(app_year, 1) into mydate2;
+	select date_add(mydate2, interval (app_month-1) MONTH) into mydate2;
+	select date_add(mydate2, interval (app_day-1) DAY) into mydate2;
+
+	select date_add(mydate2, interval -7 DAY) into mydate1;
+
+	select ((SUM(Duration)/60)/7) as t_on from History where (Appliance = 1) and (EventTime >= mydate1) and (EventTime <= mydate2);
+End
+//
+delimiter ;
+
+delimiter //
+Create Procedure spApplianceLog6(in app_month int, in app_year int, in app_day int)
+Begin
+	declare mydate1 datetime;
+	declare mydate2 datetime;
+
+	select MAKEDATE(app_year, 1) into mydate2;
+	select date_add(mydate2, interval (app_month-1) MONTH) into mydate2;
+	select date_add(mydate2, interval (app_day-1) DAY) into mydate2;
+
+	select date_add(mydate2, interval -7 DAY) into mydate1;
+
+	select ((SUM(Duration)/3600)/7) as t_on,((SUM(Ekwh))/7) as energy from History where (Appliance = 20) and (EventTime >= mydate1) and (EventTime <= mydate2);
+End
+//
+delimiter ;
+
+
+
+delimiter //
+Create Procedure spUpdateHistory()
+Begin
+
+create temporary table tmp1 (SELECT * from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime));
+update tmp1 set Ekwh = Ekwh * timestampdiff(SECOND, DATE(EventTime) + INTERVAL 0 SECOND, EventTime)/Duration, Duration = timestampdiff(SECOND, DATE(EventTime) + INTERVAL 0 SECOND, EventTime);
+
+create temporary table tmp2 (SELECT * from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime));
+update tmp2 set Ekwh = Ekwh * timestampdiff(SECOND, date_add(EventTime,interval -Duration second), DATE(EventTime) + INTERVAL 0 SECOND)/Duration, Duration = timestampdiff(SECOND, date_add(EventTime,interval -Duration second), DATE(EventTime) + INTERVAL 0 SECOND), EventTime = (DATE(EventTime) + INTERVAL -1 SECOND);
+
+INSERT INTO History SELECT * FROM tmp1;
+INSERT INTO History SELECT * FROM tmp2;
+
+drop table tmp1;
+drop table tmp2;
+delete from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime);
+
+End
+//
+delimiter ;
+
+
+
+///////////////////EVENTO PARA ATUALIZAR HISTORY
+
+SET GLOBAL event_scheduler = ON;
+
+delimiter //
+CREATE EVENT event_updateHist
+  ON SCHEDULE EVERY '1' DAY
+  STARTS '2017-10-5 12:00:00'    
+DO 
+  call spUpdateHistory();
+//
+delimiter ;
+
+
+delimiter //
+Create Procedure spTest()
+Begin
+select sum(History.Ekwh) as ekwh,sum(History.Duration)/60 as minutes,sum(History.Duration)/3600 as hours,MasterClassName.ClassName as class,DATE_FORMAT(History.EventTime, "%d/%m") as day from History,MasterClass,MasterClassName   where (YEAR(History.EventTime) = 2017) and (MONTH(History.EventTime) >= 9) and (History.Appliance = MasterClass.SubClass) and (MasterClass.Appliance = MasterClassName.Appliance) and (MasterClass.Appliance = 0) group by MasterClass.Appliance,DAY(History.EventTime),MONTH(EventTime) order by History.EventTime limit 35;
+End
+//
+delimiter ;
+
+
+Create Table Feedback(Appliance int, Subitem int, Msg varchar(200));
+insert into Feedback(Appliance, Subitem, Msg) values(0, 0, 'Regule o termostato do refrigerador de acordo com a estacao do ano ou conforme a quantidade de alimentos armazenados');
+insert into Feedback(Appliance, Subitem, Msg) values(0, 1, 'Verifique o estado da borracha de vedacao');
+insert into Feedback(Appliance, Subitem, Msg) values(0, 2, 'Evite abrir a porta sem necessidade ou por tempo prolongado');
+insert into Feedback(Appliance, Subitem, Msg) values(1, 0, 'Lembre-se de retirar os alimentos do freezer com antecedência, evitando o descongelamento com o auxílio do micro-ondas');
+
+
+//////////////////////PROBLEMAS COM NTPUPDATE
+
+
+ update History set EventTime = date_add(EventTime, interval -3 hour) where DAY(EventTime) = 17 and HOUR(EventTime) < 11;
+
+update energy set EventTime = date_add(dt, interval -3 hour) where DAY(dt) = 17 and HOUR(dt) < 11 and SECOND(dt) != 27;
+
+
+//////////ERRO DE DESAGREGAÇÃO
+select ((a.e_dis)/(b.e_tot))*100 as estimation, a.dt_day as day from (select DAY(EventTime) as dt_day,sum(Ekwh) as e_dis from History where MONTH(EventTime) = 10 group by DAY(EventTime)) a, (select DAY(dt) as dt_day, sum(ekwh) as e_tot from energy where (MONTH(dt) = 10) and (YEAR(dt) = 2017) and (pavg >= 10) group by DAY(dt)) b where a.dt_day = b.dt_day;
+
+
+
+select a.Events,a.EventDay from (select COUNT(*) as Events,DAY(EventTime) as EventDay from History where Appliance = 0 group by DAY(EventTime)) a where a.Events <= 25;
+
+
+select SUM(ekwh) from energy where pavg < 10 group by DAY(dt);
+
+
+SELECT * from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime);
+SELECT timestampdiff(SECOND, DATE(EventTime) + INTERVAL 0 SECOND, EventTime) from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime);
+SELECT timestampdiff(SECOND, date_add(EventTime,interval -Duration second), DATE(EventTime) + INTERVAL 0 SECOND) from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime);
+select * from History where exists (SELECT * from History where DAY(date_add(EventTime, interval -Duration second)) != DAY(EventTime));
+
+
+select AVG(((820*(History.Duration - 2)/3600)/(History.Ekwh*1000))) as eff from History where (YEAR(History.EventTime) = 2017) and (MONTH(History.EventTime) = 10) and (History.Appliance = 1) and Duration >= 180 order by History.EventTime;
+select AVG(((583*(History.Duration - 2)/3600)/(History.Ekwh*1000))) as eff from History where (YEAR(History.EventTime) = 2017) and (MONTH(History.EventTime) = 10) and (DAY(History.EventTime) = 17) and (MINUTE(History.EventTime) >= 38) and (History.Duration >= 30) and (History.Appliance = 1) order by History.EventTime;
+select AVG(((548*(History.Duration - 2)/3600)/(History.Ekwh*1000))) as eff from History where (YEAR(History.EventTime) = 2017) and (MONTH(History.EventTime) = 10) and (DAY(History.EventTime) = 17) and (MINUTE(History.EventTime) >= 38) and (History.Duration >= 30) and (History.Appliance = 1) order by History.EventTime;
+select AVG(((820*(History.Duration - 2)/3600)/(History.Ekwh*1000))) as eff from History where (YEAR(History.EventTime) = 2017) and (MONTH(History.EventTime) = 10) and (DAY(History.EventTime) >= 27) and (History.Appliance = 1) and (History.Duration >= 30) order by History.EventTime;
+
+
+
